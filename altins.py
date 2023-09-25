@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+from glob import glob
 from importlib.metadata import version
-import urllib.request
 from zipfile import ZipFile
 import shutil
 import json
@@ -19,7 +19,7 @@ def download_alttester(release):
     #print("download_alttester(release)") #DEBUGGING
     #print(f"  release: {release}") # DEBUGGING
     zip_url = f"https://github.com/alttester/AltTester-Unity-SDK/archive/refs/tags/{release}.zip"
-    urllib.request.urlretrieve(zip_url, "AltTester.zip")
+    os.system(f"curl {zip_url} -o AltTester.zip -L")
 
 
 def add_alttester_to_project(release, assets):
@@ -88,6 +88,27 @@ using Altom.AltTester;"""
         content = f.read()
         f.seek(0, 0)
         f.write(buildUsingDirectives + "\n" + content)
+
+
+def modify_asmdef(assets):
+    """
+    Modifies any `.asmdef` files to include the AltTester and AltTesterEditor references.
+
+    Args:
+        `string` assets: The Assets folder path.
+    """
+    for filename in glob(f"/{assets}/**/*.asmdef", recursive=True):
+        if "AltTester" not in filename and "Plugins" not in filename:
+            with open(filename, mode='r+', encoding='utf-8-sig') as file:
+                file_data = json.load(file)
+                if "references" not in file_data:
+                    file_data["references"] = []
+                if "AltTester" not in file_data["references"]:
+                    file_data["references"].append("AltTester")
+                if "AltTesterEditor" not in file_data["references"]:
+                    file_data["references"].append("AltTesterEditor")
+                file.seek(0)
+                json.dump(file_data, file, indent = 3)
 
 
 def get_scenes_of_game(settings):
@@ -276,9 +297,11 @@ if __name__ == "__main__":
     download_alttester(release=args.release)
     add_alttester_to_project(release=args.release, assets=args.assets)
     modify_manifest(manifest=args.manifest, newt=args.newt)
+    modify_asmdef(assets=args.assets)
     modify_build_file_usings(buildFile=args.buildFile)
     scene_array = get_scenes_of_game(settings=args.settings)
     modify_build_file_method(scenes=scene_array, buildFile=args.buildFile, buildMethod=args.buildMethod)
 
     if "old" in args.inputSystem:
+        if os.path.exists(f"{args.assets}/AltTester/AltServer/Input.cs"):
             remove_new_input_system(args.assets)
